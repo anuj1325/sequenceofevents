@@ -1,0 +1,12 @@
+# SEO robots configuration
+
+User-agent: *
+Allow: /
+
+# Sitemap location
+Sitemap: https://timeline-app.com/sitemap.xml
+
+# Disallow sensitive paths (if any)
+Disallow: /admin/
+Disallow: /api/
+Disallow: /*.json$
