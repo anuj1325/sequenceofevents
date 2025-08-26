@@ -37,7 +37,8 @@
       "@/types/*": ["types/*"],
       "@/utils/*": ["utils/*"],
       "@/hooks/*": ["hooks/*"],
-      "@/services/*": ["services/*"]
+      "@/services/*": ["services/*"],
+      "@/lib/*": ["lib/*"]
     }
   },
   "include": [
