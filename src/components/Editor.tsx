@@ -88,6 +88,13 @@ const Editor: React.FC<EditorProps> = ({ onNavigate, onClose, referenceLetter, a
   const [feedbackLineIdx, setFeedbackLineIdx] = useState<number | null>(null);
   const [showPlus, setShowPlus] = useState<boolean>(false);
   const [showPrompt, setShowPrompt] = useState<boolean>(false);
+  const [isInfoExpanded, setIsInfoExpanded] = useState<boolean>(true);
+  const [isWriting, setIsWriting] = useState<boolean>(false);
+  const [showOptionsBar, setShowOptionsBar] = useState<boolean>(true);
+  const [bottomHover, setBottomHover] = useState<boolean>(false);
+
+  // Summary modal state
+  const [showSummaryModal, setShowSummaryModal] = useState<boolean>(false);
 
     // Citations state
   const [citations, setCitations] = useState<string[]>([]);
@@ -470,6 +477,72 @@ const Editor: React.FC<EditorProps> = ({ onNavigate, onClose, referenceLetter, a
     setReferencedLetters(prev => prev.filter(ref => ref.id !== letterId));
   };
 
+  // Generate mock summary for all selected letters
+  const generateMockSummary = () => {
+    // Combine reference letter (from table view) with referenced letters (from sidebar)
+    const allLetters = [];
+    if (referenceLetter) {
+      allLetters.push(referenceLetter);
+    }
+    // Add referenced letters, but avoid duplicates
+    referencedLetters.forEach(letter => {
+      if (!referenceLetter || letter.id !== referenceLetter.id) {
+        allLetters.push(letter);
+      }
+    });
+
+    if (allLetters.length === 0) {
+      return {
+        totalLetters: 0,
+        summaryText: "No letters selected for summary.",
+        keyPoints: [],
+        participants: [],
+        timeline: [],
+        letters: []
+      };
+    }
+
+    const participants = Array.from(new Set([
+      ...allLetters.map(letter => letter.from),
+      ...allLetters.map(letter => letter.to)
+    ]));
+
+    const keyPoints = allLetters.length === 1 ? [
+      "Single letter correspondence analysis",
+      "Key participants and their roles identified", 
+      "Subject matter and priority level assessed",
+      "Status and timeline information reviewed",
+      "Attachments and supporting documentation noted"
+    ] : [
+      "Multiple correspondence regarding contractual obligations and dispute resolution",
+      "Escalation pattern observed from initial inquiry to formal legal notice",
+      "Key issues include breach of contract terms and compensation disputes",
+      "Timeline spans over several months with increasing urgency",
+      "Multiple parties involved requiring coordinated response"
+    ];
+
+    const timeline = allLetters
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .map(letter => ({
+        date: letter.date,
+        event: `${letter.letterNo}: ${letter.subject}`,
+        from: letter.from
+      }));
+
+    const summaryText = allLetters.length === 1 
+      ? `This summary covers a single letter (${allLetters[0].letterNo}) from ${allLetters[0].from} to ${allLetters[0].to}. The correspondence relates to ${allLetters[0].subject.toLowerCase()} with ${allLetters[0].priority.toLowerCase()} priority and current status of ${allLetters[0].status.replace('_', ' ')}.`
+      : `This correspondence sequence involves ${allLetters.length} letters exchanged between ${participants.length} parties. The communication flow demonstrates a structured legal process with clear escalation patterns and documented evidence of negotiations and dispute resolution attempts.`;
+
+    return {
+      totalLetters: allLetters.length,
+      summaryText,
+      keyPoints,
+      participants,
+      timeline,
+      letters: allLetters
+    };
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="flex relative" style={{height: '100vh', overflow: 'hidden'}}>
@@ -482,6 +555,320 @@ const Editor: React.FC<EditorProps> = ({ onNavigate, onClose, referenceLetter, a
             transition: isResizing.current ? 'none' : 'width 0.1s ease',
             overflow: 'auto'
           }}>
+          {/* Back to Timeline Navigation */}
+          {(selectedDraft || referenceLetter) && onNavigate && (
+            <div className="mb-3">
+              <button
+                onClick={() => onNavigate('timeline')}
+                className="flex items-center gap-2 px-3 py-2 text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+              >
+                <span>←</span>
+                <span>Back to Timeline</span>
+              </button>
+            </div>
+          )}
+
+          {/* Draft/Reference Information - Collapsible */}
+          {selectedDraft ? (
+            <div className="bg-white border border-gray-200 rounded-lg mb-3 shadow-sm">
+              {/* Header - Always Visible */}
+              <div className="flex items-center justify-between p-3 cursor-pointer" onClick={() => setIsInfoExpanded(!isInfoExpanded)}>
+                <div className="flex items-center gap-3">
+                  {/* Status Symbol */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg" title={`Status: ${selectedDraft.status}`}>
+                      {selectedDraft.status === 'In Draft' ? '📝' :
+                       selectedDraft.status === 'Published' ? '✅' :
+                       selectedDraft.status === 'Sent for Review' ? '👁️' :
+                       selectedDraft.status === 'Approved' ? '✔️' :
+                       selectedDraft.status === 'Sent to Authority' ? '📤' : '📄'}
+                    </span>
+                    <span className="text-sm font-medium text-green-700">Draft</span>
+                  </div>
+                  
+                  {/* Key Info in Header */}
+                  <div className="flex items-center gap-4 text-sm text-gray-600">
+                    <span className="font-medium">{selectedDraft.subject}</span>
+                    <span>•</span>
+                    <span>{new Date(selectedDraft.createdDate).toLocaleDateString()}</span>
+                    <span>•</span>
+                    <span>{selectedDraft.draftNumber}</span>
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  {/* Summary Button */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowSummaryModal(true);
+                    }}
+                    className="text-blue-600 hover:text-blue-700 text-sm px-3 py-1 rounded hover:bg-blue-50 font-medium"
+                    title="View Summary of Referenced Letters"
+                  >
+                    Summary
+                  </button>
+                  {/* Close Button */}
+                  {onClose && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onClose();
+                      }}
+                      className="text-gray-400 hover:text-gray-600 text-sm px-2 py-1 rounded hover:bg-gray-100"
+                      title="Back to Draft Management"
+                    >
+                      ✕
+                    </button>
+                  )}
+                  {/* Expand/Collapse Icon */}
+                  <span className="text-gray-400">
+                    {isInfoExpanded ? '▼' : '▶'}
+                  </span>
+                </div>
+              </div>
+              
+              {/* Expanded Content */}
+              {isInfoExpanded && (
+                <div className="border-t border-gray-100 p-3 bg-gray-50">
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-2 mb-3">
+                    <div className="flex items-center gap-3">
+                      <label className="text-xs font-medium text-gray-500 w-20 flex-shrink-0">Draft Name:</label>
+                      <input
+                        type="text"
+                        value={selectedDraft.draftName}
+                        readOnly
+                        className="flex-1 px-2 py-1 border border-gray-200 rounded text-xs bg-white"
+                      />
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <label className="text-xs font-medium text-gray-500 w-20 flex-shrink-0">Draft No:</label>
+                      <input
+                        type="text"
+                        value={selectedDraft.draftNumber}
+                        readOnly
+                        className="flex-1 px-2 py-1 border border-gray-200 rounded text-xs bg-white"
+                      />
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <label className="text-xs font-medium text-gray-500 w-20 flex-shrink-0">To:</label>
+                      <input
+                        type="text"
+                        value={selectedDraft.to}
+                        readOnly
+                        className="flex-1 px-2 py-1 border border-gray-200 rounded text-xs bg-white"
+                      />
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <label className="text-xs font-medium text-gray-500 w-20 flex-shrink-0">Reference:</label>
+                      <input
+                        type="text"
+                        value={selectedDraft.letterInReference}
+                        readOnly
+                        className="flex-1 px-2 py-1 border border-gray-200 rounded text-xs bg-white"
+                      />
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <label className="text-xs font-medium text-gray-500 w-20 flex-shrink-0">Status:</label>
+                      <input
+                        type="text"
+                        value={selectedDraft.status}
+                        readOnly
+                        className="flex-1 px-2 py-1 border border-gray-200 rounded text-xs bg-white"
+                      />
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <label className="text-xs font-medium text-gray-500 w-20 flex-shrink-0">Created By:</label>
+                      <input
+                        type="text"
+                        value={selectedDraft.createdBy}
+                        readOnly
+                        className="flex-1 px-2 py-1 border border-gray-200 rounded text-xs bg-white"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Subject</label>
+                      <textarea
+                        value={selectedDraft.subject}
+                        readOnly
+                        rows={2}
+                        className="w-full px-2 py-1 border border-gray-200 rounded text-xs bg-white resize-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Description</label>
+                      <textarea
+                        value={selectedDraft.description}
+                        readOnly
+                        rows={2}
+                        className="w-full px-2 py-1 border border-gray-200 rounded text-xs bg-white resize-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : referenceLetter && (
+            <div className="bg-white border border-gray-200 rounded-lg mb-3 shadow-sm">
+              {/* Header - Always Visible */}
+              <div className="flex items-center justify-between p-3 cursor-pointer" onClick={() => setIsInfoExpanded(!isInfoExpanded)}>
+                <div className="flex items-center gap-3">
+                  {/* Status Symbol */}
+                  <div className="flex items-center gap-2">
+                    <div className="relative">
+                      <span className="text-lg" title={`Status: ${referenceLetter.status}`}>
+                        {referenceLetter.status === 'draft' ? '📝' :
+                         referenceLetter.status === 'sent' ? '📤' :
+                         referenceLetter.status === 'received' ? '📥' :
+                         referenceLetter.status === 'under_review' ? '👁️' :
+                         referenceLetter.status === 'resolved' ? '✅' : '📄'}
+                      </span>
+                      {referenceLetter.isOverdue && (
+                        <span className="absolute -top-1 -right-1 text-red-500 text-xs">⚠️</span>
+                      )}
+                    </div>
+                    <span className="text-sm font-medium text-blue-700">Reference</span>
+                  </div>
+                  
+                  {/* Key Info in Header */}
+                  <div className="flex items-center gap-4 text-sm text-gray-600">
+                    <span className="font-medium">{referenceLetter.subject}</span>
+                    <span>•</span>
+                    <span>{new Date(referenceLetter.date).toLocaleDateString()}</span>
+                    <span>•</span>
+                    <span>{referenceLetter.letterNo}</span>
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  {/* Summary Button */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowSummaryModal(true);
+                    }}
+                    className="text-blue-600 hover:text-blue-700 text-sm px-3 py-1 rounded hover:bg-blue-50 font-medium"
+                    title="View Summary of Referenced Letters"
+                  >
+                    Summary
+                  </button>
+                  {/* Close Button */}
+                  {onClose && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onClose();
+                      }}
+                      className="text-gray-400 hover:text-gray-600 text-sm px-2 py-1 rounded hover:bg-gray-100"
+                      title="Back to Timeline"
+                    >
+                      ✕
+                    </button>
+                  )}
+                  {/* Expand/Collapse Icon */}
+                  <span className="text-gray-400">
+                    {isInfoExpanded ? '▼' : '▶'}
+                  </span>
+                </div>
+              </div>
+              
+              {/* Expanded Content */}
+              {isInfoExpanded && (
+                <div className="border-t border-gray-100 p-3 bg-gray-50">
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-2 mb-3">
+                    <div className="flex items-center gap-3">
+                      <label className="text-xs font-medium text-gray-500 w-20 flex-shrink-0">Letter No:</label>
+                      <input
+                        type="text"
+                        value={referenceLetter.letterNo}
+                        readOnly
+                        className="flex-1 px-2 py-1 border border-gray-200 rounded text-xs bg-white"
+                      />
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <label className="text-xs font-medium text-gray-500 w-20 flex-shrink-0">Date:</label>
+                      <input
+                        type="text"
+                        value={new Date(referenceLetter.date).toLocaleDateString()}
+                        readOnly
+                        className="flex-1 px-2 py-1 border border-gray-200 rounded text-xs bg-white"
+                      />
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <label className="text-xs font-medium text-gray-500 w-20 flex-shrink-0">From:</label>
+                      <input
+                        type="text"
+                        value={referenceLetter.from}
+                        readOnly
+                        className="flex-1 px-2 py-1 border border-gray-200 rounded text-xs bg-white"
+                      />
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <label className="text-xs font-medium text-gray-500 w-20 flex-shrink-0">To:</label>
+                      <input
+                        type="text"
+                        value={referenceLetter.to}
+                        readOnly
+                        className="flex-1 px-2 py-1 border border-gray-200 rounded text-xs bg-white"
+                      />
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <label className="text-xs font-medium text-gray-500 w-20 flex-shrink-0">Priority:</label>
+                      <input
+                        type="text"
+                        value={referenceLetter.priority}
+                        readOnly
+                        className="flex-1 px-2 py-1 border border-gray-200 rounded text-xs bg-white"
+                      />
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <label className="text-xs font-medium text-gray-500 w-20 flex-shrink-0">Assignee:</label>
+                      <input
+                        type="text"
+                        value={referenceLetter.assignee}
+                        readOnly
+                        className="flex-1 px-2 py-1 border border-gray-200 rounded text-xs bg-white"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Subject</label>
+                      <textarea
+                        value={referenceLetter.subject}
+                        readOnly
+                        rows={2}
+                        className="w-full px-2 py-1 border border-gray-200 rounded text-xs bg-white resize-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Description</label>
+                      <textarea
+                        value={referenceLetter.description}
+                        readOnly
+                        rows={2}
+                        className="w-full px-2 py-1 border border-gray-200 rounded text-xs bg-white resize-none"
+                      />
+                    </div>
+                    {referenceLetter.attachments.length > 0 && (
+                      <div className="flex items-center gap-3">
+                        <label className="text-xs font-medium text-gray-500 w-20 flex-shrink-0">Attachments:</label>
+                        <input
+                          type="text"
+                          value={referenceLetter.attachments.join(', ')}
+                          readOnly
+                          className="flex-1 px-2 py-1 border border-gray-200 rounded text-xs bg-white"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           <EditorToolbar
             currentFont={currentFont}
             currentSize={currentSize}
@@ -498,97 +885,6 @@ const Editor: React.FC<EditorProps> = ({ onNavigate, onClose, referenceLetter, a
             canRedo={redoStack.length > 0}
             onSave={handleSave}
           />
-
-          {/* Draft/Reference Information */}
-          {selectedDraft ? (
-            <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-lg font-semibold text-green-800">Editing Draft</h3>
-                {onClose && (
-                  <button
-                    onClick={onClose}
-                    className="text-green-600 hover:text-green-800 text-sm font-medium"
-                  >
-                    ← Back to Draft Management
-                  </button>
-                )}
-              </div>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="font-medium text-gray-700">Draft Name:</span>
-                  <span className="ml-2 text-gray-900">{selectedDraft.draftName}</span>
-                </div>
-                <div>
-                  <span className="font-medium text-gray-700">Draft No:</span>
-                  <span className="ml-2 text-gray-900">{selectedDraft.draftNumber}</span>
-                </div>
-                <div>
-                  <span className="font-medium text-gray-700">Status:</span>
-                  <span className="ml-2 text-gray-900">{selectedDraft.status}</span>
-                </div>
-                <div>
-                  <span className="font-medium text-gray-700">Created:</span>
-                  <span className="ml-2 text-gray-900">{new Date(selectedDraft.createdDate).toLocaleDateString()}</span>
-                </div>
-                <div>
-                  <span className="font-medium text-gray-700">To:</span>
-                  <span className="ml-2 text-gray-900">{selectedDraft.to}</span>
-                </div>
-                <div>
-                  <span className="font-medium text-gray-700">Reference:</span>
-                  <span className="ml-2 text-gray-900">{selectedDraft.letterInReference}</span>
-                </div>
-              </div>
-              <div className="mt-3">
-                <span className="font-medium text-gray-700">Subject:</span>
-                <p className="mt-1 text-gray-900">{selectedDraft.subject}</p>
-              </div>
-              <div className="mt-3">
-                <span className="font-medium text-gray-700">Description:</span>
-                <p className="mt-1 text-gray-900">{selectedDraft.description}</p>
-              </div>
-            </div>
-          ) : referenceLetter && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-lg font-semibold text-blue-800">Reference Letter</h3>
-                {onClose && (
-                  <button
-                    onClick={onClose}
-                    className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-                  >
-                    ← Back to Timeline
-                  </button>
-                )}
-              </div>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="font-medium text-gray-700">Letter No:</span>
-                  <span className="ml-2 text-gray-900">{referenceLetter.letterNo}</span>
-                </div>
-                <div>
-                  <span className="font-medium text-gray-700">Date:</span>
-                  <span className="ml-2 text-gray-900">{new Date(referenceLetter.date).toLocaleDateString()}</span>
-                </div>
-                <div>
-                  <span className="font-medium text-gray-700">From:</span>
-                  <span className="ml-2 text-gray-900">{referenceLetter.from}</span>
-                </div>
-                <div>
-                  <span className="font-medium text-gray-700">To:</span>
-                  <span className="ml-2 text-gray-900">{referenceLetter.to}</span>
-                </div>
-              </div>
-              <div className="mt-3">
-                <span className="font-medium text-gray-700">Subject:</span>
-                <p className="mt-1 text-gray-900">{referenceLetter.subject}</p>
-              </div>
-              <div className="mt-3">
-                <span className="font-medium text-gray-700">Description:</span>
-                <p className="mt-1 text-gray-900">{referenceLetter.description}</p>
-              </div>
-            </div>
-          )}
 
           <div className="bg-white rounded-lg shadow-sm border relative">
             <style dangerouslySetInnerHTML={{ __html: `
@@ -626,8 +922,13 @@ const Editor: React.FC<EditorProps> = ({ onNavigate, onClose, referenceLetter, a
                 suppressContentEditableWarning={true}
                 onInput={e => {
                   updateLines();
+                  setIsWriting(true);
+                  setShowOptionsBar(false);
                 }}
                 onKeyDown={e => {
+                  setIsWriting(true);
+                  setShowOptionsBar(false);
+                  
                   if (e.key === 'Enter') {
                     e.preventDefault();
                     const lastLineIdx = lines.length - 1;
@@ -641,6 +942,15 @@ const Editor: React.FC<EditorProps> = ({ onNavigate, onClose, referenceLetter, a
                     document.execCommand('insertHTML', false, '<div><br></div>');
                     updateLines();
                   }
+                }}
+                onFocus={() => {
+                  setIsWriting(true);
+                  setShowOptionsBar(false);
+                }}
+                onBlur={() => {
+                  setTimeout(() => {
+                    setIsWriting(false);
+                  }, 2000); // Delay before showing options bar again
                 }}
                 className="w-full min-h-screen"
                 spellCheck="true"
@@ -733,10 +1043,31 @@ const Editor: React.FC<EditorProps> = ({ onNavigate, onClose, referenceLetter, a
                 </div>
               </div>
             )}
+            {/* Bottom hover area */}
+            <div 
+              className="absolute bottom-0 left-0 right-0 h-24 z-10"
+              onMouseEnter={() => setBottomHover(true)}
+              onMouseLeave={() => setBottomHover(false)}
+            />
+            
             {/* Perpetual options bar */}
             <div
-              className="sticky bottom-12 flex justify-center gap-4 p-4 bg-white border-t border-gray-200"
-              style={{ pointerEvents: 'auto' }}
+              className={`sticky bottom-12 flex justify-center gap-4 p-4 bg-white border-t border-gray-200 transition-all duration-300 ease-in-out ${
+                (isWriting && !bottomHover) ? 'opacity-0 translate-y-full pointer-events-none' : 'opacity-100 translate-y-0 pointer-events-auto'
+              }`}
+              style={{ 
+                transform: (isWriting && !bottomHover) ? 'translateY(100%)' : 'translateY(0)',
+              }}
+              onMouseEnter={() => {
+                setShowOptionsBar(true);
+                setBottomHover(true);
+              }}
+              onMouseLeave={() => {
+                if (isWriting) {
+                  setShowOptionsBar(false);
+                }
+                setBottomHover(false);
+              }}
             >
               <button className="bg-blue-50 text-blue-900 px-6 py-3 rounded-xl shadow-sm flex items-center gap-2 text-base font-medium hover:bg-blue-100 transition">
                 <span role="img" aria-label="AI">🪄</span> Write Draft with AI
@@ -748,7 +1079,7 @@ const Editor: React.FC<EditorProps> = ({ onNavigate, onClose, referenceLetter, a
                 Create an Draft Outline
               </button>
               <button className="bg-blue-50 text-blue-900 px-6 py-3 rounded-xl shadow-sm text-base font-medium hover:bg-blue-100 transition">
-                Ask a ‘Research’ Question
+                Ask a 'Research' Question
               </button>
               <button className="bg-blue-50 text-blue-900 px-6 py-3 rounded-xl shadow-sm text-base font-medium hover:bg-blue-100 transition">
                 <span role="img" aria-label="PDF">↗</span> Chat with PDF
@@ -797,6 +1128,156 @@ const Editor: React.FC<EditorProps> = ({ onNavigate, onClose, referenceLetter, a
         />
         </div>
       </div>
+
+      {/* Summary Modal */}
+      {showSummaryModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-bold text-gray-800">Letters Summary</h2>
+                <button
+                  onClick={() => setShowSummaryModal(false)}
+                  className="text-gray-500 hover:text-gray-700 text-xl"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
+              {(() => {
+                const summary = generateMockSummary();
+                return (
+                  <div className="space-y-6">
+                    {/* Overview */}
+                    <div className="bg-blue-50 rounded-lg p-4">
+                      <h3 className="text-lg font-semibold text-blue-900 mb-2">Overview</h3>
+                      <div className="grid grid-cols-2 gap-4 mb-4">
+                        <div className="bg-white rounded p-3">
+                          <div className="text-2xl font-bold text-blue-600">{summary.totalLetters}</div>
+                          <div className="text-sm text-gray-600">Total Letters</div>
+                        </div>
+                        <div className="bg-white rounded p-3">
+                          <div className="text-2xl font-bold text-green-600">{summary.participants.length}</div>
+                          <div className="text-sm text-gray-600">Participants</div>
+                        </div>
+                      </div>
+                      <p className="text-gray-700">{summary.summaryText}</p>
+                    </div>
+
+                    {/* Participants */}
+                    {summary.participants.length > 0 && (
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-800 mb-3">Participants</h3>
+                        <div className="flex flex-wrap gap-2">
+                          {summary.participants.map((participant, index) => (
+                            <span
+                              key={index}
+                              className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-sm"
+                            >
+                              {participant}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Key Points */}
+                    {summary.keyPoints.length > 0 && (
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-800 mb-3">Key Points</h3>
+                        <ul className="list-disc list-inside space-y-2 text-gray-700">
+                          {summary.keyPoints.map((point, index) => (
+                            <li key={index}>{point}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Timeline */}
+                    {summary.timeline.length > 0 && (
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-800 mb-3">Timeline</h3>
+                        <div className="space-y-3">
+                          {summary.timeline.map((item, index) => (
+                            <div key={index} className="flex items-start gap-4 p-3 bg-gray-50 rounded-lg">
+                              <div className="bg-blue-500 text-white text-xs px-2 py-1 rounded min-w-[80px] text-center">
+                                {new Date(item.date).toLocaleDateString()}
+                              </div>
+                              <div className="flex-1">
+                                <div className="font-medium text-gray-900">{item.event}</div>
+                                <div className="text-sm text-gray-600">From: {item.from}</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Referenced Letters Details */}
+                    {summary.letters.length > 0 && (
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-800 mb-3">
+                          {summary.letters.length === 1 ? 'Letter Details' : 'Referenced Letters'}
+                        </h3>
+                        <div className="space-y-3">
+                          {summary.letters.map((letter) => (
+                            <div key={letter.id} className="border border-gray-200 rounded-lg p-4">
+                              <div className="flex items-start justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium text-blue-600">{letter.letterNo}</span>
+                                  <span className="text-sm text-gray-500">
+                                    {new Date(letter.date).toLocaleDateString()}
+                                  </span>
+                                  <span className={`text-xs px-2 py-1 rounded-full ${
+                                    letter.priority === 'High' ? 'bg-red-100 text-red-800' :
+                                    letter.priority === 'Medium' ? 'bg-yellow-100 text-yellow-800' :
+                                    'bg-green-100 text-green-800'
+                                  }`}>
+                                    {letter.priority}
+                                  </span>
+                                </div>
+                                <span className={`text-xs px-2 py-1 rounded-full ${
+                                  letter.status === 'resolved' ? 'bg-green-100 text-green-800' :
+                                  letter.status === 'under_review' ? 'bg-yellow-100 text-yellow-800' :
+                                  'bg-gray-100 text-gray-800'
+                                }`}>
+                                  {letter.status.replace('_', ' ').toUpperCase()}
+                                </span>
+                              </div>
+                              <h4 className="font-medium text-gray-900 mb-1">{letter.subject}</h4>
+                              <p className="text-sm text-gray-600 mb-2">
+                                From: {letter.from} → To: {letter.to}
+                              </p>
+                              <p className="text-sm text-gray-700">{letter.description}</p>
+                              {letter.attachments.length > 0 && (
+                                <div className="mt-2">
+                                  <span className="text-xs text-gray-500">Attachments: </span>
+                                  <span className="text-xs text-gray-600">{letter.attachments.join(', ')}</span>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+
+            <div className="p-4 border-t border-gray-200 bg-gray-50 flex justify-end">
+              <button
+                onClick={() => setShowSummaryModal(false)}
+                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
 
   );

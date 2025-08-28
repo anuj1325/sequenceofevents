@@ -81,6 +81,7 @@ const EditorSidebar: React.FC<EditorSidebarProps> = ({
 }) => {
   const [showReferenceModal, setShowReferenceModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedLetterIds, setSelectedLetterIds] = useState<Set<string>>(new Set());
 
   // Filter available letters based on search query
   const filteredLetters = availableLetters.filter(letter =>
@@ -94,6 +95,45 @@ const EditorSidebar: React.FC<EditorSidebarProps> = ({
     onAddReference?.(letter);
     setShowReferenceModal(false);
     setSearchQuery('');
+    setSelectedLetterIds(new Set());
+  };
+
+  const handleCheckboxChange = (letterId: string, checked: boolean) => {
+    const newSelected = new Set(selectedLetterIds);
+    if (checked) {
+      newSelected.add(letterId);
+    } else {
+      newSelected.delete(letterId);
+    }
+    setSelectedLetterIds(newSelected);
+  };
+
+  const handleSelectAll = () => {
+    const availableIds = filteredLetters
+      .filter(letter => !referencedLetters.some(ref => ref.id === letter.id))
+      .map(letter => letter.id);
+    
+    if (selectedLetterIds.size === availableIds.length) {
+      // Deselect all
+      setSelectedLetterIds(new Set());
+    } else {
+      // Select all available
+      setSelectedLetterIds(new Set(availableIds));
+    }
+  };
+
+  const handleAddSelected = () => {
+    const lettersToAdd = filteredLetters.filter(letter => selectedLetterIds.has(letter.id));
+    lettersToAdd.forEach(letter => onAddReference?.(letter));
+    setShowReferenceModal(false);
+    setSearchQuery('');
+    setSelectedLetterIds(new Set());
+  };
+
+  const closeModal = () => {
+    setShowReferenceModal(false);
+    setSearchQuery('');
+    setSelectedLetterIds(new Set());
   };
 
   return (
@@ -212,10 +252,7 @@ const EditorSidebar: React.FC<EditorSidebarProps> = ({
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-bold text-gray-800">Add Letter Reference</h2>
                 <button
-                  onClick={() => {
-                    setShowReferenceModal(false);
-                    setSearchQuery('');
-                  }}
+                  onClick={closeModal}
                   className="text-gray-500 hover:text-gray-700"
                 >
                   <X size={20} />
@@ -235,23 +272,74 @@ const EditorSidebar: React.FC<EditorSidebarProps> = ({
               </div>
             </div>
 
+            {/* Bulk Actions */}
+            {filteredLetters.length > 0 && (
+              <div className="px-4 py-2 border-b border-gray-200 bg-gray-50">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={handleSelectAll}
+                      className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                    >
+                      {selectedLetterIds.size === filteredLetters.filter(letter => !referencedLetters.some(ref => ref.id === letter.id)).length 
+                        ? 'Deselect All' 
+                        : 'Select All'}
+                    </button>
+                    {selectedLetterIds.size > 0 && (
+                      <span className="text-sm text-gray-600">
+                        {selectedLetterIds.size} selected
+                      </span>
+                    )}
+                  </div>
+                  {selectedLetterIds.size > 0 && (
+                    <button
+                      onClick={handleAddSelected}
+                      className="px-4 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 transition-colors"
+                    >
+                      Add Selected ({selectedLetterIds.size})
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Letters List */}
             <div className="max-h-96 overflow-y-auto p-4">
               {filteredLetters.length > 0 ? (
                 <div className="space-y-2">
                   {filteredLetters.map((letter) => {
                     const isAlreadyReferenced = referencedLetters.some(ref => ref.id === letter.id);
+                    const isSelected = selectedLetterIds.has(letter.id);
                     return (
                       <div
                         key={letter.id}
-                        className={`border rounded-lg p-3 cursor-pointer transition-colors ${
+                        className={`border rounded-lg p-3 transition-colors ${
                           isAlreadyReferenced 
                             ? 'bg-gray-100 border-gray-300 opacity-50 cursor-not-allowed' 
-                            : 'hover:bg-blue-50 border-gray-200 hover:border-blue-300'
+                            : isSelected
+                            ? 'bg-blue-50 border-blue-300'
+                            : 'hover:bg-blue-50 border-gray-200 hover:border-blue-300 cursor-pointer'
                         }`}
-                        onClick={() => !isAlreadyReferenced && handleAddReference(letter)}
+                        onClick={() => {
+                          if (!isAlreadyReferenced) {
+                            handleCheckboxChange(letter.id, !isSelected);
+                          }
+                        }}
                       >
-                        <div className="flex items-start justify-between">
+                        <div className="flex items-start gap-3">
+                          {/* Checkbox */}
+                          {!isAlreadyReferenced && (
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={(e) => {
+                                e.stopPropagation();
+                                handleCheckboxChange(letter.id, e.target.checked);
+                              }}
+                              className="mt-1 w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                            />
+                          )}
+                          
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-1">
                               <span className="text-sm font-medium text-blue-600">{letter.letterNo}</span>

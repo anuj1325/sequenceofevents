@@ -1603,6 +1603,53 @@ const TableView: React.FC<{ onEventClick?: (event: Event) => void; selectedEvent
       getAllLettersFromEvent(selectedEvent) : 
       mockData.events.flatMap(event => getAllLettersFromEvent(event)).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   
+  // State for selected letters
+  const [selectedLetters, setSelectedLetters] = React.useState<Set<string>>(new Set());
+  
+  // Handle checkbox changes
+  const handleCheckboxChange = (letterId: string, checked: boolean) => {
+    const newSelectedLetters = new Set(selectedLetters);
+    if (checked) {
+      newSelectedLetters.add(letterId);
+    } else {
+      newSelectedLetters.delete(letterId);
+    }
+    setSelectedLetters(newSelectedLetters);
+  };
+  
+  // Handle select all checkbox
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedLetters(new Set(lettersToShow.map(letter => letter.id)));
+    } else {
+      setSelectedLetters(new Set());
+    }
+  };
+  
+  // Handle draft letter with selected references
+  const handleDraftWithSelected = () => {
+    if (selectedLetters.size === 0) return;
+    
+    const selectedLetterObjects = lettersToShow.filter(letter => selectedLetters.has(letter.id));
+    // Create a composite object with selected letters as references
+    const compositeReference = {
+      id: 'composite-' + Date.now(),
+      from: 'User',
+      to: 'Recipient',
+      date: new Date().toISOString(),
+      letterNo: `DRAFT-${Date.now()}`,
+      subject: `Draft with ${selectedLetters.size} reference(s)`,
+      description: `Draft letter referencing ${selectedLetters.size} selected letter(s)`,
+      priority: 'Medium' as const,
+      isOverdue: false,
+      assignee: 'Current User',
+      attachments: [],
+      references: selectedLetterObjects
+    };
+    
+    onDraftLetter?.(compositeReference);
+  };
+  
   return (
     <div className="h-[calc(100vh-160px)] overflow-auto p-4 w-full max-w-full">
       <div className="bg-white rounded-lg shadow-md overflow-hidden w-full">
@@ -1618,10 +1665,31 @@ const TableView: React.FC<{ onEventClick?: (event: Event) => void; selectedEvent
             </p>
           </div>
         )}
+        {selectedLetters.size > 0 && (
+          <div className="p-4 bg-yellow-50 border-b border-yellow-200 flex justify-between items-center">
+            <div className="text-sm text-yellow-800">
+              <span className="font-semibold">{selectedLetters.size}</span> letter{selectedLetters.size !== 1 ? 's' : ''} selected
+            </div>
+            <button
+              onClick={handleDraftWithSelected}
+              className="px-4 py-2 bg-green-600 text-white text-sm rounded hover:bg-green-700 transition-colors flex items-center space-x-2"
+            >
+              <span>Draft Letter with Selected References</span>
+            </button>
+          </div>
+        )}
         <div className="overflow-x-auto w-full">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50 sticky top-0">
               <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <input
+                    type="checkbox"
+                    checked={selectedLetters.size === lettersToShow.length && lettersToShow.length > 0}
+                    onChange={(e) => handleSelectAll(e.target.checked)}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">S.No</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">From</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">To</th>
@@ -1639,6 +1707,17 @@ const TableView: React.FC<{ onEventClick?: (event: Event) => void; selectedEvent
             <tbody className="bg-white divide-y divide-gray-200">
               {lettersToShow.map((letter, index) => (
                 <tr key={letter.id} className="cursor-pointer hover:bg-gray-50" onClick={() => {}}>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <input
+                      type="checkbox"
+                      checked={selectedLetters.has(letter.id)}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        handleCheckboxChange(letter.id, e.target.checked);
+                      }}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{index + 1}</td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`px-2 py-1 text-xs rounded ${letter.from === 'Contractor' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}`}>
